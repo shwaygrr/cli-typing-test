@@ -9,11 +9,9 @@ import (
 )
 
 const (
-	CTRLC      byte = 3
-	BACKSPACE  byte = 127
-	ENTER      byte = 13
-	LEFT_ARROW      = 13
-	// RIGHT_ARROW =
+	CTRLC     byte = 3
+	BACKSPACE byte = 127
+	ENTER     byte = 13
 )
 
 type Test struct {
