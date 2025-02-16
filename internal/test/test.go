@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/shwaygrr/cli-typing-test/internal/ansi"
 	"golang.org/x/term"
 )
 
 const (
-	CTRLC     byte = 3
-	BACKSPACE byte = 127
-	ENTER     byte = 13
-	// LEFT_ARROW = 13
+	CTRLC      byte = 3
+	BACKSPACE  byte = 127
+	ENTER      byte = 13
+	LEFT_ARROW      = 13
 	// RIGHT_ARROW =
 )
 
@@ -31,30 +32,33 @@ func NewTest(expected_str string) Test {
 }
 
 func (test *Test) handleInput(input byte) {
+	isAllowedInput := ('A' <= input && input <= 'Z') || ('a' <= input && input <= 'z') || ('0' <= input && input <= '9') || input == ' ' || input == CTRLC || input == BACKSPACE
+
+	if !isAllowedInput {
+		return
+	}
+
 	switch input {
-	case CTRLC, ENTER: //test prgogram enders
+	case CTRLC: // handle end test
 		os.Exit(1)
 	case BACKSPACE: //handle backspace
 		if test.cursorPos > 0 {
-			test.input[test.cursorPos] = ' '                                        // Erase character
-			fmt.Printf("\033[1;%dH \033[1;%dH", test.cursorPos+1, test.cursorPos+1) // Move cursor back,
-
 			test.cursorPos--
+			ansi.Backspace()
 		}
-	default: //normal input
-		if test.cursorPos < len(test.expected)-1 {
+	default: //handle normal input
+		if test.cursorPos < len(test.expected) {
 			test.input[test.cursorPos] = byte(input)
-			fmt.Printf("\033[1;%dH%s", test.cursorPos+1, string(input))
 			test.cursorPos++
+			ansi.WriteChar(1, test.cursorPos, input)
 		}
 	}
 }
 
 func (test *Test) termSetup() {
-	fmt.Print("\033[2J") // Clear screen
-	fmt.Print("\033[H")  // Move cursor to top-left
+	ansi.ResetScreen()
 	fmt.Println(test.expected)
-	fmt.Printf("\033[1;1H") // Move to row 1, column 1
+	ansi.WriteChar(1, 1, 0)
 }
 
 func (test *Test) RunTest() {
