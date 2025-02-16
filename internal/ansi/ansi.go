@@ -18,8 +18,12 @@ func ResetScreen() {
 	fmt.Print("\033[H")  // Move cursor to top-left
 }
 
-func WriteChar(row, col int, char byte) {
-	fmt.Printf("\033[%d;%dH%s", row, col, string(char))
+func WriteCharWithColor(row, col int, char byte, colorEscapeCode string) {
+	fmt.Printf("%s\033[%d;%dH%s", colorEscapeCode, row, col, string(char))
+}
+
+func ChangeTextColor(color string) {
+	fmt.Print(color)
 }
 
 func Backspace() {

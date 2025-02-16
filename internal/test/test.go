@@ -1,6 +1,7 @@
 package test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -29,16 +30,16 @@ func NewTest(expected_str string) Test {
 	return test
 }
 
-func (test *Test) handleInput(input byte) {
+func (test *Test) handleInput(input byte) error {
 	isAllowedInput := ('A' <= input && input <= 'Z') || ('a' <= input && input <= 'z') || ('0' <= input && input <= '9') || input == ' ' || input == CTRLC || input == BACKSPACE
 
 	if !isAllowedInput {
-		return
+		return nil //not error
 	}
 
 	switch input {
 	case CTRLC: // handle end test
-		os.Exit(1)
+		return errors.New("Closing test")
 	case BACKSPACE: //handle backspace
 		if test.cursorPos > 0 {
 			test.cursorPos--
@@ -48,15 +49,21 @@ func (test *Test) handleInput(input byte) {
 		if test.cursorPos < len(test.expected) {
 			test.input[test.cursorPos] = byte(input)
 			test.cursorPos++
-			ansi.WriteChar(1, test.cursorPos, input)
+			if input == test.expected[test.cursorPos-1] {
+				ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Green)
+			} else {
+				ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Red)
+			}
 		}
 	}
+	return nil
 }
 
 func (test *Test) termSetup() {
 	ansi.ResetScreen()
+	ansi.ChangeTextColor(ansi.Cyan)
 	fmt.Println(test.expected)
-	ansi.WriteChar(1, 1, 0)
+	ansi.WriteCharWithColor(1, 1, 0, "")
 }
 
 func (test *Test) RunTest() {
@@ -69,6 +76,7 @@ func (test *Test) RunTest() {
 	defer term.Restore(file_descriptor, oldState)
 
 	test.termSetup()
+	defer ansi.ChangeTextColor(ansi.Reset)
 
 	for {
 		// fmt.Print(string(test.expected[test.cursorPos]))
@@ -78,6 +86,9 @@ func (test *Test) RunTest() {
 			panic(err)
 		}
 
-		test.handleInput(b[0])
+		err := test.handleInput(b[0])
+		if err != nil {
+			return
+		}
 	}
 }
