@@ -34,18 +34,20 @@ func (test *Test) handleInput(input byte) error {
 	isAllowedInput := ('A' <= input && input <= 'Z') || ('a' <= input && input <= 'z') || ('0' <= input && input <= '9') || input == ' ' || input == CTRLC || input == BACKSPACE
 
 	if !isAllowedInput {
-		return nil //not error
+		return nil // not error but does nothing with input
 	}
 
 	switch input {
-	case CTRLC: // handle end test
-		return errors.New("Closing test")
-	case BACKSPACE: //handle backspace
+	case CTRLC, ENTER: // handle end test
+		return errors.New("closing test")
+
+	case BACKSPACE: // handle backspace
 		if test.cursorPos > 0 {
 			test.cursorPos--
-			ansi.Backspace()
+			ansi.BackspaceAndReplace(test.expected[test.cursorPos])
 		}
-	default: //handle normal input
+
+	default: // handle normal input
 		if test.cursorPos < len(test.expected) {
 			test.input[test.cursorPos] = byte(input)
 			test.cursorPos++

@@ -26,6 +26,6 @@ func ChangeTextColor(color string) {
 	fmt.Print(color)
 }
 
-func Backspace() {
-	fmt.Print("\b \b")
+func BackspaceAndReplace(char byte) {
+	fmt.Printf("\b%s%c\b", Cyan, char)
 }
