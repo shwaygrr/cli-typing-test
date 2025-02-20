@@ -105,8 +105,16 @@ func (test *Test) timeCalcs(duration_minutes float32) (float32, float32) {
 	cpm := float32(valid_chars) / duration_minutes
 	wpm := float32(test.total_words) / duration_minutes
 
-	fmt.Println(ansi.Reset+"cpm:", cpm)
-	fmt.Println("\nduration:", duration_minutes)
+	duration_type := "minutes"
+	duration := duration_minutes
+
+	if duration_minutes < 1 {
+		duration = duration_minutes * 60
+		duration_type = "seconds"
+	}
+
+	fmt.Println(ansi.Reset+"\ncpm:", cpm)
+	fmt.Println("duration:", duration, duration_type)
 	fmt.Println("wpm:", wpm)
 	fmt.Println("valid_chars:", valid_chars)
 	return cpm, wpm
@@ -149,3 +157,7 @@ func (test *Test) RunTest() {
 	test.timeCalcs(float32(time.Since(startTime).Minutes()))
 
 }
+
+//to make each string distinguashble without splitting and reading by spaces
+//store all the words in an  array of strings (words).
+//Need to then modify the printing of the words (handle input) to consider the new DS
