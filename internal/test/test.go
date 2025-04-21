@@ -15,24 +15,24 @@ const (
 	CTRLC     byte = 3
 	BACKSPACE byte = 127
 	ENTER     byte = 13
+	SPACE     byte = 32
 )
 
 type Test struct {
-	expected                 string
-	input                    []byte
-	cursorPos                int
-	total_chars, total_words int
+	expected                                        string
+	input                                           []byte
+	cursorPos, minCursorPos, totalChars, totalWords int
 	// wpm, cpm, accuracy float32
 }
 
 func NewTest(expected_str string) Test {
 	test := Test{
-		expected:    expected_str,
-		input:       make([]byte, len(expected_str)),
-		cursorPos:   0,
-		total_chars: len(expected_str),
-		total_words: len(strings.Trim(expected_str, " ")),
-
+		expected:     expected_str,
+		input:        make([]byte, len(expected_str)),
+		cursorPos:    0,
+		minCursorPos: 0,
+		totalChars:   len(expected_str),
+		totalWords:   len(strings.Trim(expected_str, " ")),
 		// wpm:       0,
 		// cpm:       0,
 		// accuracy:  0,
@@ -63,10 +63,18 @@ func (test *Test) handleInput(input byte) error {
 		strings.ContainsRune("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", rune(input)) ||
 		input == ' ' ||
 		input == CTRLC ||
+		input == SPACE ||
 		input == BACKSPACE
 
 	if !isAllowedInput {
-		return nil // not error but does nothing with input
+		return nil
+	}
+
+	if expected := test.getExpectedChar(); expected == SPACE && expected != input && input != BACKSPACE {
+		test.input[test.cursorPos] = byte(input)
+		test.cursorPos++
+		ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Red)
+		return nil
 	}
 
 	switch input {
@@ -83,10 +91,11 @@ func (test *Test) handleInput(input byte) error {
 		if test.cursorPos < len(test.expected) {
 			test.input[test.cursorPos] = byte(input)
 			test.cursorPos++
-			if input == test.expected[test.cursorPos-1] {
-				ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Green)
+			expected := test.expected[test.cursorPos-1]
+			if input == expected {
+				ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Green)
 			} else {
-				ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Red)
+				ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Red)
 			}
 		}
 	}
@@ -101,9 +110,9 @@ func (test *Test) termSetup() {
 }
 
 func (test *Test) timeCalcs(duration_minutes float32) (float32, float32) {
-	valid_chars := test.total_chars - test.calcInputCharDiff()
-	cpm := float32(valid_chars) / duration_minutes
-	wpm := float32(test.total_words) / duration_minutes
+	validChars := test.totalChars - test.calcInputCharDiff()
+	cpm := float32(validChars) / duration_minutes
+	wpm := float32(test.totalWords) / duration_minutes
 
 	duration_type := "minutes"
 	duration := duration_minutes
@@ -116,7 +125,7 @@ func (test *Test) timeCalcs(duration_minutes float32) (float32, float32) {
 	fmt.Println(ansi.Reset+"\ncpm:", cpm)
 	fmt.Println("duration:", duration, duration_type)
 	fmt.Println("wpm:", wpm)
-	fmt.Println("valid_chars:", valid_chars)
+	fmt.Println("valid_chars:", validChars)
 	return cpm, wpm
 }
 
