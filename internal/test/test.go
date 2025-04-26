@@ -19,9 +19,10 @@ const (
 )
 
 type Test struct {
-	expected                                        string
-	input                                           []byte
-	cursorPos, minCursorPos, totalChars, totalWords int
+	expected                string
+	input                   []byte
+	cursorPos, minCursorPos int
+	totalChars, totalWords  int
 	// wpm, cpm, accuracy float32
 }
 
@@ -56,6 +57,21 @@ func (test *Test) calcInputCharDiff() int {
 	return diff_count
 }
 
+func (test *Test) handleSpace() {
+
+	if test.expected[test.cursorPos] != SPACE {
+		ansi.WriteCharWithColor(1, test.cursorPos, test.expected[test.cursorPos], ansi.Red)
+		return
+	}
+
+	if string(test.input[test.minCursorPos:test.cursorPos]) == test.expected[test.minCursorPos:test.cursorPos] {
+		test.minCursorPos = test.cursorPos
+	}
+
+	test.cursorPos++
+	ansi.WriteCharWithColor(1, test.cursorPos, SPACE, ansi.Green)
+}
+
 func (test *Test) handleInput(input byte) error {
 	isAllowedInput := ('A' <= input && input <= 'Z') ||
 		('a' <= input && input <= 'z') ||
@@ -70,33 +86,46 @@ func (test *Test) handleInput(input byte) error {
 		return nil
 	}
 
-	if expected := test.getExpectedChar(); expected == SPACE && expected != input && input != BACKSPACE {
-		test.input[test.cursorPos] = byte(input)
-		test.cursorPos++
-		ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Red)
+	isAllowedAtEnd := input == BACKSPACE || input == CTRLC
+
+	if test.cursorPos >= len(test.expected) && !isAllowedAtEnd {
 		return nil
+	}
+
+	// wrong char on expected SPACE
+	if !isAllowedAtEnd {
+		if expected := test.getExpectedChar(); expected == SPACE && input != expected {
+			test.input[test.cursorPos] = byte(input)
+			test.cursorPos++
+			ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Red)
+			return nil
+		}
 	}
 
 	switch input {
 	case CTRLC: // handle end test
 		return errors.New("closing test")
 
+	case SPACE:
+		if test.cursorPos < len(test.expected) {
+			test.input[test.cursorPos] = byte(SPACE)
+			test.handleSpace()
+		}
+
 	case BACKSPACE: // handle backspace
-		if test.cursorPos > 0 {
+		if test.cursorPos > test.minCursorPos {
 			test.cursorPos--
 			ansi.BackspaceAndReplace(test.getExpectedChar())
 		}
 
 	default: // handle normal input
-		if test.cursorPos < len(test.expected) {
-			test.input[test.cursorPos] = byte(input)
-			test.cursorPos++
-			expected := test.expected[test.cursorPos-1]
-			if input == expected {
-				ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Green)
-			} else {
-				ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Red)
-			}
+		test.input[test.cursorPos] = byte(input)
+		test.cursorPos++
+		expected := test.expected[test.cursorPos-1]
+		if input == expected {
+			ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Green)
+		} else {
+			ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Red)
 		}
 	}
 	return nil
@@ -106,7 +135,7 @@ func (test *Test) termSetup() {
 	ansi.ResetScreen()
 	ansi.ChangeTextColor(ansi.Cyan)
 	fmt.Println(test.expected)
-	ansi.WriteCharWithColor(1, 1, 0, "") //move to start and
+	ansi.WriteCharWithColor(1, 1, 0, "") // move to start
 }
 
 func (test *Test) timeCalcs(duration_minutes float32) (float32, float32) {
@@ -164,7 +193,6 @@ func (test *Test) RunTest() {
 	}
 
 	test.timeCalcs(float32(time.Since(startTime).Minutes()))
-
 }
 
 //to make each string distinguashble without splitting and reading by spaces
