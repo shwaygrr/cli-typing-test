@@ -18,23 +18,29 @@ const (
 	SPACE     byte = 32
 )
 
+type Cursor struct {
+	pos, currWordPos, minPos int
+}
+
 type Test struct {
-	expected                             string
-	input                                []byte
-	cursorPos, currWordPos, minCursorPos int
-	totalChars, totalWords               int
+	expected               string
+	input                  []byte
+	cursor                 Cursor
+	totalChars, totalWords int
 	// wpm, cpm, accuracy float32
 }
 
 func NewTest(expected_str string) Test {
 	test := Test{
-		expected:     expected_str,
-		input:        make([]byte, len(expected_str)),
-		cursorPos:    0,
-		currWordPos:  0,
-		minCursorPos: 0,
-		totalChars:   len(expected_str),
-		totalWords:   len(strings.Trim(expected_str, " ")),
+		expected: expected_str,
+		input:    make([]byte, len(expected_str)),
+		cursor: Cursor{
+			pos:         0,
+			currWordPos: 0,
+			minPos:      0,
+		},
+		totalChars: len(expected_str),
+		totalWords: len(strings.Trim(expected_str, " ")),
 		// wpm:       0,
 		// cpm:       0,
 		// accuracy:  0,
@@ -43,7 +49,7 @@ func NewTest(expected_str string) Test {
 }
 
 func (test *Test) getExpectedChar() byte {
-	return test.expected[test.cursorPos]
+	return test.expected[test.cursor.pos]
 }
 
 func (test *Test) calcInputCharDiff() int {
@@ -60,22 +66,22 @@ func (test *Test) calcInputCharDiff() int {
 
 func (test *Test) handleSpace() {
 
-	if test.expected[test.cursorPos] != SPACE {
-		ansi.WriteCharWithColor(1, test.cursorPos, test.expected[test.cursorPos], ansi.Red)
+	if test.expected[test.cursor.pos] != SPACE {
+		ansi.WriteCharWithColor(1, test.cursor.pos, test.expected[test.cursor.pos], ansi.Red)
 		return
 	}
 
-	if test.currWordPos < test.cursorPos {
-		if string(test.input[test.currWordPos:test.cursorPos]) == test.expected[test.currWordPos:test.cursorPos] {
-			test.minCursorPos = test.cursorPos
+	if test.cursor.currWordPos < test.cursor.pos {
+		if string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
+			test.cursor.minPos = test.cursor.pos
 		}
-		test.cursorPos++
-		test.currWordPos = test.cursorPos
+		test.cursor.pos++
+		test.cursor.currWordPos = test.cursor.pos
 	} else {
-		test.cursorPos++
+		test.cursor.pos++
 	}
 
-	ansi.WriteCharWithColor(1, test.cursorPos, SPACE, ansi.Green)
+	ansi.WriteCharWithColor(1, test.cursor.pos, SPACE, ansi.Green)
 }
 
 func (test *Test) handleInput(input byte) error {
@@ -94,16 +100,16 @@ func (test *Test) handleInput(input byte) error {
 
 	isAllowedAtEnd := input == BACKSPACE || input == CTRLC
 
-	if test.cursorPos >= len(test.expected) && !isAllowedAtEnd {
+	if test.cursor.pos >= len(test.expected) && !isAllowedAtEnd {
 		return nil
 	}
 
 	// wrong char on expected SPACE
 	if !isAllowedAtEnd {
 		if expected := test.getExpectedChar(); expected == SPACE && input != expected {
-			test.input[test.cursorPos] = byte(input)
-			test.cursorPos++
-			ansi.WriteCharWithColor(1, test.cursorPos, input, ansi.Red)
+			test.input[test.cursor.pos] = byte(input)
+			test.cursor.pos++
+			ansi.WriteCharWithColor(1, test.cursor.pos, input, ansi.Red)
 			return nil
 		}
 	}
@@ -113,25 +119,25 @@ func (test *Test) handleInput(input byte) error {
 		return errors.New("closing test")
 
 	case SPACE:
-		if test.cursorPos < len(test.expected) {
-			test.input[test.cursorPos] = byte(SPACE)
+		if test.cursor.pos < len(test.expected) {
+			test.input[test.cursor.pos] = byte(SPACE)
 			test.handleSpace()
 		}
 
 	case BACKSPACE: // handle backspace
-		if test.cursorPos > test.minCursorPos {
-			test.cursorPos--
+		if test.cursor.pos > test.cursor.minPos {
+			test.cursor.pos--
 			ansi.BackspaceAndReplace(test.getExpectedChar())
 		}
 
 	default: // handle normal input
-		test.input[test.cursorPos] = byte(input)
-		test.cursorPos++
-		expected := test.expected[test.cursorPos-1]
+		test.input[test.cursor.pos] = byte(input)
+		test.cursor.pos++
+		expected := test.expected[test.cursor.pos-1]
 		if input == expected {
-			ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Green)
+			ansi.WriteCharWithColor(1, test.cursor.pos, expected, ansi.Green)
 		} else {
-			ansi.WriteCharWithColor(1, test.cursorPos, expected, ansi.Red)
+			ansi.WriteCharWithColor(1, test.cursor.pos, expected, ansi.Red)
 		}
 	}
 	return nil
@@ -200,7 +206,3 @@ func (test *Test) RunTest() {
 
 	test.timeCalcs(float32(time.Since(startTime).Minutes()))
 }
-
-//to make each string distinguashble without splitting and reading by spaces
-//store all the words in an  array of strings (words).
-//Need to then modify the printing of the words (handle input) to consider the new DS
