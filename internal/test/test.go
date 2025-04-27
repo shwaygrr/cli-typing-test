@@ -19,10 +19,10 @@ const (
 )
 
 type Test struct {
-	expected                string
-	input                   []byte
-	cursorPos, minCursorPos int
-	totalChars, totalWords  int
+	expected                             string
+	input                                []byte
+	cursorPos, currWordPos, minCursorPos int
+	totalChars, totalWords               int
 	// wpm, cpm, accuracy float32
 }
 
@@ -31,6 +31,7 @@ func NewTest(expected_str string) Test {
 		expected:     expected_str,
 		input:        make([]byte, len(expected_str)),
 		cursorPos:    0,
+		currWordPos:  0,
 		minCursorPos: 0,
 		totalChars:   len(expected_str),
 		totalWords:   len(strings.Trim(expected_str, " ")),
@@ -64,11 +65,16 @@ func (test *Test) handleSpace() {
 		return
 	}
 
-	if string(test.input[test.minCursorPos:test.cursorPos]) == test.expected[test.minCursorPos:test.cursorPos] {
-		test.minCursorPos = test.cursorPos
+	if test.currWordPos < test.cursorPos {
+		if string(test.input[test.currWordPos:test.cursorPos]) == test.expected[test.currWordPos:test.cursorPos] {
+			test.minCursorPos = test.cursorPos
+		}
+		test.cursorPos++
+		test.currWordPos = test.cursorPos
+	} else {
+		test.cursorPos++
 	}
 
-	test.cursorPos++
 	ansi.WriteCharWithColor(1, test.cursorPos, SPACE, ansi.Green)
 }
 
