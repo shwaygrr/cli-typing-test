@@ -18,32 +18,45 @@ const (
 	SPACE     byte = 32
 )
 
-type Cursor struct {
+type cursor struct {
 	pos, currWordPos, minPos int
 }
 
+type tracker struct {
+	validWordsCount, validKeysCount, invalidKeysCount, totalKeyStrokes int
+	validKeysStreaks                                                   []int
+	// correctionCount                                                    int
+}
+
 type Test struct {
-	expected               string
-	input                  []byte
-	cursor                 Cursor
-	totalChars, totalWords int
-	// wpm, cpm, accuracy float32
+	expected     string
+	input        []byte
+	cursor       cursor
+	tracker      tracker
+	durationMins float32
+}
+
+func (cursor *cursor) writeCharWithColor(inputChar byte, colorEscapeCode string) {
+	ansi.WriteCharWithColor(1, cursor.pos, inputChar, colorEscapeCode)
+}
+
+func (tracker *tracker) recordValidKey() {
+	streaksLastIndex := len(tracker.validKeysStreaks) - 1
+	tracker.validKeysCount++
+	tracker.validKeysStreaks[streaksLastIndex]++
+}
+
+func (tracker *tracker) recordInvalidKey() {
+	tracker.invalidKeysCount++
+	tracker.validKeysStreaks = append(tracker.validKeysStreaks, 0)
 }
 
 func NewTest(expected_str string) Test {
 	test := Test{
 		expected: expected_str,
 		input:    make([]byte, len(expected_str)),
-		cursor: Cursor{
-			pos:         0,
-			currWordPos: 0,
-			minPos:      0,
-		},
-		totalChars: len(expected_str),
-		totalWords: len(strings.Trim(expected_str, " ")),
-		// wpm:       0,
-		// cpm:       0,
-		// accuracy:  0,
+		cursor:   cursor{},
+		tracker:  tracker{validKeysStreaks: []int{0}},
 	}
 	return test
 }
@@ -52,28 +65,19 @@ func (test *Test) getExpectedChar() byte {
 	return test.expected[test.cursor.pos]
 }
 
-func (test *Test) calcInputCharDiff() int {
-	diff_count := 0
-
-	for i := range test.expected {
-		if test.expected[i] != test.input[i] {
-			diff_count++
-		}
-	}
-
-	return diff_count
-}
-
 func (test *Test) handleSpace() {
-
 	if test.expected[test.cursor.pos] != SPACE {
-		ansi.WriteCharWithColor(1, test.cursor.pos, test.expected[test.cursor.pos], ansi.Red)
+		test.cursor.writeCharWithColor(test.expected[test.cursor.pos], ansi.Red)
+		test.tracker.recordInvalidKey()
 		return
 	}
+
+	test.tracker.recordValidKey()
 
 	if test.cursor.currWordPos < test.cursor.pos {
 		if string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
 			test.cursor.minPos = test.cursor.pos
+			test.tracker.validWordsCount++
 		}
 		test.cursor.pos++
 		test.cursor.currWordPos = test.cursor.pos
@@ -81,7 +85,7 @@ func (test *Test) handleSpace() {
 		test.cursor.pos++
 	}
 
-	ansi.WriteCharWithColor(1, test.cursor.pos, SPACE, ansi.Green)
+	test.cursor.writeCharWithColor(SPACE, ansi.Green)
 }
 
 func (test *Test) handleInput(input byte) error {
@@ -104,12 +108,14 @@ func (test *Test) handleInput(input byte) error {
 		return nil
 	}
 
+	test.tracker.totalKeyStrokes++
 	// wrong char on expected SPACE
 	if !isAllowedAtEnd {
 		if expected := test.getExpectedChar(); expected == SPACE && input != expected {
 			test.input[test.cursor.pos] = byte(input)
 			test.cursor.pos++
-			ansi.WriteCharWithColor(1, test.cursor.pos, input, ansi.Red)
+			test.cursor.writeCharWithColor(input, ansi.Red)
+			test.tracker.recordInvalidKey()
 			return nil
 		}
 	}
@@ -135,9 +141,11 @@ func (test *Test) handleInput(input byte) error {
 		test.cursor.pos++
 		expected := test.expected[test.cursor.pos-1]
 		if input == expected {
-			ansi.WriteCharWithColor(1, test.cursor.pos, expected, ansi.Green)
+			test.cursor.writeCharWithColor(expected, ansi.Green)
+			test.tracker.recordValidKey()
 		} else {
-			ansi.WriteCharWithColor(1, test.cursor.pos, expected, ansi.Red)
+			test.cursor.writeCharWithColor(expected, ansi.Red)
+			test.tracker.recordInvalidKey()
 		}
 	}
 	return nil
@@ -150,24 +158,61 @@ func (test *Test) termSetup() {
 	ansi.WriteCharWithColor(1, 1, 0, "") // move to start
 }
 
-func (test *Test) timeCalcs(duration_minutes float32) (float32, float32) {
-	validChars := test.totalChars - test.calcInputCharDiff()
-	cpm := float32(validChars) / duration_minutes
-	wpm := float32(test.totalWords) / duration_minutes
+// func (test *Test) calcInputDiffs() int {
+// 	diff_count := 0
+
+// 	for i := range test.expected {
+// 		if test.expected[i] != test.input[i] {
+// 			diff_count++
+// 		}
+// 	}
+
+// 	return diff_count
+// }
+
+func (test *Test) computeMetrics() (accuracy, cpm, wpm, consistency float32, mistakes int) {
+	max := func(arr []int) int {
+		max := 0
+		for _, num := range arr {
+			if num > max {
+				max = num
+			}
+		}
+		return max
+	}
+
+	accuracy = float32(test.tracker.validKeysCount) / float32(test.tracker.totalKeyStrokes)
+	cpm = float32(test.tracker.validKeysCount) / test.durationMins
+	wpm = float32(test.tracker.validWordsCount) / test.durationMins
+
+	consistency = float32(max(test.tracker.validKeysStreaks)) / float32(test.tracker.totalKeyStrokes)
+	mistakes = test.tracker.invalidKeysCount
+	// corrections = ...
+	return
+}
+
+func (test *Test) endTest(startTime time.Time) {
+	//handle tottal key strokes = 0
+	//hgandle time 0
+
+	test.durationMins = float32(time.Since(startTime).Minutes())
+	accuracy, cpm, wpm, consistency, mistakes := test.computeMetrics()
 
 	duration_type := "minutes"
-	duration := duration_minutes
+	duration := test.durationMins
 
-	if duration_minutes < 1 {
-		duration = duration_minutes * 60
+	if duration < 1 {
+		duration *= 60
 		duration_type = "seconds"
 	}
 
-	fmt.Println(ansi.Reset+"\ncpm:", cpm)
-	fmt.Println("duration:", duration, duration_type)
+	fmt.Println(ansi.Reset+"\nduration:", duration, duration_type)
+	fmt.Println("cpm:", cpm)
 	fmt.Println("wpm:", wpm)
-	fmt.Println("valid_chars:", validChars)
-	return cpm, wpm
+	fmt.Println("accuracy:", accuracy*100)
+	fmt.Println("consistency:", consistency*100)
+	fmt.Println("mistakes", mistakes)
+	fmt.Printf("%+v\n", test.tracker)
 }
 
 func (test *Test) RunTest() {
@@ -203,6 +248,5 @@ func (test *Test) RunTest() {
 			break
 		}
 	}
-
-	test.timeCalcs(float32(time.Since(startTime).Minutes()))
+	test.endTest(startTime)
 }
