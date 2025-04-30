@@ -25,8 +25,8 @@ type cursor struct {
 }
 
 type tracker struct {
-	validWordsCount, validKeysCount, invalidKeysCount, totalKeyStrokes int
-	validKeysStreaks                                                   []int
+	validWordsCount, validKeysCount, totalKeyStrokes int
+	validKeysStreaks                                 []int
 	// correctionCount                                                    int
 }
 
@@ -43,13 +43,11 @@ func (cursor *cursor) writeCharWithColor(inputChar byte, colorEscapeCode string)
 }
 
 func (tracker *tracker) recordValidKey() {
-	streaksLastIndex := len(tracker.validKeysStreaks) - 1 //should be the same as amount of mistakes (needs refactor)
 	tracker.validKeysCount++
-	tracker.validKeysStreaks[streaksLastIndex]++
+	tracker.validKeysStreaks[len(tracker.validKeysStreaks)-1]++
 }
 
 func (tracker *tracker) recordInvalidKey() {
-	tracker.invalidKeysCount++
 	tracker.validKeysStreaks = append(tracker.validKeysStreaks, 0)
 }
 
@@ -193,7 +191,7 @@ func (test *Test) computeMetrics() (accuracy, cpm, wpm, consistency float32, err
 	wpm = float32(test.tracker.validWordsCount) / test.durationMins
 
 	consistency = float32(max(test.tracker.validKeysStreaks)) / float32(test.tracker.totalKeyStrokes)
-	errors = test.tracker.invalidKeysCount
+	errors = len(test.tracker.validKeysStreaks) - 1
 	// corrections = ...
 	return
 }
@@ -220,7 +218,7 @@ func (test *Test) endTest(startTime time.Time) {
 	fmt.Println("cpm:", round(cpm))
 	fmt.Println("wpm:", round(wpm))
 	fmt.Printf("accuracy: %d%%\n", round(accuracy*100))
-	fmt.Printf("cosistency: %d%%\n", round(consistency*100))
+	fmt.Printf("consistency: %d%%\n", round(consistency*100))
 	fmt.Println("errors:", errors)
 
 	fmt.Printf("\n%+v\n", test.tracker)
