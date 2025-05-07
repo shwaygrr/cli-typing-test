@@ -121,7 +121,7 @@ func (test *Test) handleInput(input byte) error {
 
 	switch input {
 	case CTRLC: // handle end test
-		if string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
+		if test.cursor.pos == len(test.expected)-1 && string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
 			test.tracker.validWordsCount++
 		}
 		return errors.New("closing test")
