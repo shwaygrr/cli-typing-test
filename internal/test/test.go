@@ -87,6 +87,9 @@ func (test *Test) getExpectedChar() byte {
 	return test.expected[test.cursor.currPos.row][test.cursor.currPos.col]
 }
 
+var x string = ""
+var y string = ""
+
 func (test *Test) handleSpace() {
 	expectedChar := test.getExpectedChar()
 
@@ -107,6 +110,8 @@ func (test *Test) handleSpace() {
 	test.tracker.recordValidKey()
 
 	if test.cursor.currWordPos.isLessThan(test.cursor.currPos) {
+		x = string(test.input[test.cursor.currPos.row][test.cursor.currWordPos.col:test.cursor.currPos.col])
+		y = test.expected[test.cursor.currPos.row][test.cursor.currWordPos.col:test.cursor.currPos.col]
 		if string(test.input[test.cursor.currPos.row][test.cursor.currWordPos.col:test.cursor.currPos.col]) == test.expected[test.cursor.currPos.row][test.cursor.currWordPos.col:test.cursor.currPos.col] {
 			test.cursor.minPos = test.cursor.currPos
 			test.tracker.validWordsCount++
@@ -175,7 +180,7 @@ func (test *Test) handleInput(input byte) error {
 
 	default: // handle normal input
 		test.tracker.totalKeyStrokes++
-		test.input[test.cursor.currPos.row][test.cursor.currPos.col] = byte(SPACE)
+		test.input[test.cursor.currPos.row][test.cursor.currPos.col] = byte(input)
 		test.cursor.currPos.col++
 		expected := test.expected[test.cursor.currPos.row][test.cursor.currPos.col-1]
 		if input == expected {
@@ -253,6 +258,8 @@ func (test *Test) endTest(startTime time.Time) {
 	fmt.Printf("accuracy: %d%%\n", round(accuracy*100))
 	fmt.Printf("consistency: %d%%\n", round(consistency*100))
 	fmt.Println("errors:", errors)
+	fmt.Println("x:", x)
+	fmt.Println("y:", y)
 
 	fmt.Printf("\n%+v\n", test.tracker)
 }
