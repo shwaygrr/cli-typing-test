@@ -18,10 +18,15 @@ const (
 	BACKSPACE byte = 127
 	ENTER     byte = 13
 	SPACE     byte = 32
+	NEWLINE   byte = 10
 )
 
+type position struct {
+	row, col int
+}
+
 type cursor struct {
-	pos, currWordPos, minPos int
+	currPos, currWordPos, minPos position
 }
 
 type tracker struct {
@@ -31,15 +36,25 @@ type tracker struct {
 }
 
 type Test struct {
-	expected     string
-	input        []byte
+	expected     []string
+	input        [][]byte
 	cursor       cursor
 	tracker      tracker
 	durationMins float32
 }
 
+func (pos *position) isLessThan(pos2 position) bool {
+	if pos.row < pos2.row {
+		return true
+	} else if pos.row == pos2.row && pos.col < pos2.col {
+		return true
+	} else {
+		return false
+	}
+}
+
 func (cursor *cursor) writeCharWithColor(inputChar byte, colorEscapeCode string) {
-	ansi.WriteCharWithColor(1, cursor.pos, inputChar, colorEscapeCode)
+	ansi.WriteCharWithColor(cursor.currPos.row, cursor.currPos.col, inputChar, colorEscapeCode)
 }
 
 func (tracker *tracker) recordValidKey() {
@@ -52,37 +67,54 @@ func (tracker *tracker) recordInvalidKey() {
 }
 
 func NewTest(expected_str string) Test {
+	linesArr := strings.Split(expected_str, "\n")
+
 	test := Test{
-		expected: expected_str,
-		input:    make([]byte, len(expected_str)),
+		expected: linesArr,
+		input:    make([][]byte, len(linesArr)),
 		cursor:   cursor{},
 		tracker:  tracker{validKeysStreaks: []int{0}},
+	}
+
+	for i := range test.input {
+		test.input[i] = make([]byte, len(test.expected[i]))
+		test.expected[i] += ""
 	}
 	return test
 }
 
 func (test *Test) getExpectedChar() byte {
-	return test.expected[test.cursor.pos]
+	return test.expected[test.cursor.currPos.row][test.cursor.currPos.col]
 }
 
 func (test *Test) handleSpace() {
-	if test.expected[test.cursor.pos] != SPACE {
-		test.cursor.writeCharWithColor(test.expected[test.cursor.pos], ansi.Red)
+	expectedChar := test.getExpectedChar()
+
+	if expectedChar != SPACE {
+		test.cursor.writeCharWithColor(expectedChar, ansi.Red)
 		test.tracker.recordInvalidKey()
 		return
 	}
 
+	//pre process updatwa in case this last space
+	tempRow := test.cursor.currPos.row
+	tempCol := test.cursor.currPos.col + 1
+	if test.cursor.currPos.col+1 == len(test.expected[test.cursor.currPos.row]) {
+		tempRow++
+		tempCol = 1 //might be 1
+	}
+
 	test.tracker.recordValidKey()
 
-	if test.cursor.currWordPos < test.cursor.pos {
-		if string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
-			test.cursor.minPos = test.cursor.pos
+	if test.cursor.currWordPos.isLessThan(test.cursor.currPos) {
+		if string(test.input[test.cursor.currPos.row][test.cursor.currWordPos.col:test.cursor.currPos.col]) == test.expected[test.cursor.currPos.row][test.cursor.currWordPos.col:test.cursor.currPos.col] {
+			test.cursor.minPos = test.cursor.currPos
 			test.tracker.validWordsCount++
 		}
-		test.cursor.pos++
-		test.cursor.currWordPos = test.cursor.pos
+		test.cursor.currPos = position{row: tempRow, col: tempCol}
+		test.cursor.currWordPos = test.cursor.currPos
 	} else {
-		test.cursor.pos++
+		test.cursor.currPos.col = tempCol
 	}
 
 	test.cursor.writeCharWithColor(SPACE, ansi.Green)
@@ -102,17 +134,18 @@ func (test *Test) handleInput(input byte) error {
 		return nil
 	}
 
+	isEnd := test.cursor.currPos.row >= len(test.expected) && test.cursor.currPos.col >= len(test.expected[test.cursor.currPos.row])
 	isAllowedAtEnd := input == BACKSPACE || input == CTRLC
 
-	if test.cursor.pos >= len(test.expected) && !isAllowedAtEnd {
+	if isEnd && !isAllowedAtEnd {
 		return nil
 	}
 
 	// wrong char on expected SPACE
 	if !isAllowedAtEnd {
 		if expected := test.getExpectedChar(); expected == SPACE && input != expected {
-			test.input[test.cursor.pos] = byte(input)
-			test.cursor.pos++
+			test.input[test.cursor.currPos.row][test.cursor.currPos.col] = byte(input)
+			test.cursor.currPos.col++
 			test.cursor.writeCharWithColor(input, ansi.Red)
 			test.tracker.recordInvalidKey()
 			return nil
@@ -121,30 +154,30 @@ func (test *Test) handleInput(input byte) error {
 
 	switch input {
 	case CTRLC: // handle end test
-		if test.cursor.pos == len(test.expected)-1 && string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
-			test.tracker.validWordsCount++
-		}
+		// if test.cursor.pos == len(test.expected)-1 && string(test.input[test.cursor.currWordPos:test.cursor.pos]) == test.expected[test.cursor.currWordPos:test.cursor.pos] {
+		// 	test.tracker.validWordsCount++
+		// }
 		return errors.New("closing test")
 
 	case SPACE:
-		if test.cursor.pos < len(test.expected) {
+		if !isEnd {
 			test.tracker.totalKeyStrokes++
-			test.input[test.cursor.pos] = byte(SPACE)
+			test.input[test.cursor.currPos.row][test.cursor.currPos.col] = byte(SPACE)
 			test.handleSpace()
 		}
 
 	case BACKSPACE: // handle backspace
-		if test.cursor.pos > test.cursor.minPos {
+		if test.cursor.minPos.isLessThan(test.cursor.currPos) {
 			test.tracker.totalKeyStrokes++
-			test.cursor.pos--
+			test.cursor.currPos.col--
 			ansi.BackspaceAndReplace(test.getExpectedChar())
 		}
 
 	default: // handle normal input
 		test.tracker.totalKeyStrokes++
-		test.input[test.cursor.pos] = byte(input)
-		test.cursor.pos++
-		expected := test.expected[test.cursor.pos-1]
+		test.input[test.cursor.currPos.row][test.cursor.currPos.col] = byte(SPACE)
+		test.cursor.currPos.col++
+		expected := test.expected[test.cursor.currPos.row][test.cursor.currPos.col-1]
 		if input == expected {
 			test.cursor.writeCharWithColor(expected, ansi.Green)
 			test.tracker.recordValidKey()
@@ -159,7 +192,7 @@ func (test *Test) handleInput(input byte) error {
 func (test *Test) termSetup() {
 	ansi.ResetScreen()
 	ansi.ChangeTextColor(ansi.Cyan)
-	fmt.Println(test.expected)
+	fmt.Println(strings.Join(test.expected, "\n"))
 	ansi.WriteCharWithColor(1, 1, 0, "") // move to start
 }
 
